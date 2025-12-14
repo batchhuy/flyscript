@@ -1,85 +1,82 @@
 -- SETTINGS
-local DOUBLE_TAP_TIME = 0.3 -- seconds allowed between taps
 local SPEED_MULTIPLIER = 5
 
 -- SERVICES
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 -- PLAYER
 local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local root = character:WaitForChild("HumanoidRootPart")
 
 -- VARIABLES
 local flying = false
-local lastTap = 0
 local bodyVelocity
 local bodyGyro
 local flyConnection
 
 -- START FLYING
 local function startFlying()
+	if flying then return end
 	flying = true
 
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
 	bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-	bodyVelocity.Velocity = Vector3.zero
+	bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
 	bodyVelocity.Parent = root
 
 	bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-	bodyGyro.CFrame = root.CFrame
+	bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+	bodyGyro.P = 1e4
 	bodyGyro.Parent = root
 
 	local speed = humanoid.WalkSpeed * SPEED_MULTIPLIER
 
 	flyConnection = RunService.RenderStepped:Connect(function()
-		local moveDir = humanoid.MoveDirection
-		bodyVelocity.Velocity = moveDir * speed
-		bodyGyro.CFrame = workspace.CurrentCamera.CFrame
+		local lookVector = camera.CFrame.LookVector
+		bodyVelocity.Velocity = lookVector * speed
+		bodyGyro.CFrame = camera.CFrame
 	end)
 end
 
 -- STOP FLYING
 local function stopFlying()
+	if not flying then return end
 	flying = false
 
 	if flyConnection then
 		flyConnection:Disconnect()
+		flyConnection = nil
 	end
 
-	if bodyVelocity then bodyVelocity:Destroy() end
-	if bodyGyro then bodyGyro:Destroy() end
+	if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+	if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
 
 	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 end
 
--- INPUT DETECTION
-UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
+-- SHIFT LOCK DETECTION
+RunService.RenderStepped:Connect(function()
+	local shiftLocked = player.DevEnableMouseLock and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
 
-	if input.KeyCode == Enum.KeyCode.Space then
-		local now = tick()
-		if now - lastTap <= DOUBLE_TAP_TIME then
-			if flying then
-				stopFlying()
-			else
-				startFlying()
-			end
-		end
-		lastTap = now
+	if shiftLocked and not flying then
+		startFlying()
+	elseif not shiftLocked and flying then
+		stopFlying()
 	end
 end)
 
--- CHARACTER RESPAWN FIX
+-- RESPAWN FIX
 player.CharacterAdded:Connect(function(char)
 	character = char
 	humanoid = char:WaitForChild("Humanoid")
 	root = char:WaitForChild("HumanoidRootPart")
 	stopFlying()
 end)
+
