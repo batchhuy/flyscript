@@ -1,10 +1,11 @@
 -- SETTINGS
+local DOUBLE_TAP_TIME = 0.3
 local SPEED_MULTIPLIER = 5
 
 -- SERVICES
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 -- PLAYER
 local player = Players.LocalPlayer
@@ -16,9 +17,10 @@ local root = character:WaitForChild("HumanoidRootPart")
 
 -- VARIABLES
 local flying = false
+local lastJump = 0
+local attachment
 local linearVelocity
 local alignOrientation
-local attachment
 local flyConnection
 
 -- START FLYING
@@ -71,20 +73,23 @@ local function stopFlying()
 	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 end
 
--- SHIFT LOCK DETECTION
-RunService.RenderStepped:Connect(function()
-	local shiftLocked =
-		player.DevEnableMouseLock
-		and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+-- DOUBLE TAP SPACE DETECTION
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode ~= Enum.KeyCode.Space then return end
 
-	if shiftLocked and not flying then
-		startFlying()
-	elseif not shiftLocked and flying then
-		stopFlying()
+	local now = tick()
+	if now - lastJump <= DOUBLE_TAP_TIME then
+		if flying then
+			stopFlying()
+		else
+			startFlying()
+		end
 	end
+	lastJump = now
 end)
 
--- RESPAWN SAFETY
+-- RESPAWN FIX
 player.CharacterAdded:Connect(function(char)
 	character = char
 	humanoid = char:WaitForChild("Humanoid")
