@@ -40,21 +40,31 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "FlyGUI"
 gui.Parent = player:WaitForChild("PlayerGui")
 
+-- DRAGGABLE PANEL
+local panel = Instance.new("Frame")
+panel.Size = UDim2.new(0, 160, 0, 100)
+panel.Position = UDim2.new(0, 20, 1, -140)
+panel.BackgroundColor3 = Color3.fromRGB(50,50,50)
+panel.BorderSizePixel = 0
+panel.Parent = gui
+
+-- FLY BUTTON
 local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(0, 140, 0, 40)
-flyButton.Position = UDim2.new(0, 20, 1, -120)
+flyButton.Size = UDim2.new(1, -20, 0, 40)
+flyButton.Position = UDim2.new(0, 10, 0, 10)
 flyButton.Text = "FLY: OFF"
 flyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 flyButton.TextColor3 = Color3.new(1,1,1)
-flyButton.Parent = gui
+flyButton.Parent = panel
 
+-- BOOST BUTTON
 local speedButton = Instance.new("TextButton")
-speedButton.Size = UDim2.new(0, 140, 0, 40)
-speedButton.Position = UDim2.new(0, 20, 1, -70)
+speedButton.Size = UDim2.new(1, -20, 0, 40)
+speedButton.Position = UDim2.new(0, 10, 0, 50)
 speedButton.Text = "BOOST: OFF"
 speedButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 speedButton.TextColor3 = Color3.new(1,1,1)
-speedButton.Parent = gui
+speedButton.Parent = panel
 
 ------------------------------------------------
 -- FUNCTIONS
@@ -95,17 +105,17 @@ end
 flyButton.MouseButton1Click:Connect(toggleFly)
 speedButton.MouseButton1Click:Connect(toggleBoost)
 
--- DRAGGING FUNCTION
-local function makeDraggable(button)
+-- DRAGGING PANEL
+do
 	local dragging = false
 	local dragStart
 	local startPos
 
-	button.InputBegan:Connect(function(input)
+	panel.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
 			dragStart = input.Position
-			startPos = button.Position
+			startPos = panel.Position
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
@@ -114,11 +124,11 @@ local function makeDraggable(button)
 		end
 	end)
 
-	button.InputChanged:Connect(function(input)
+	panel.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
 			if dragging then
 				local delta = input.Position - dragStart
-				button.Position = UDim2.new(
+				panel.Position = UDim2.new(
 					startPos.X.Scale,
 					startPos.X.Offset + delta.X,
 					startPos.Y.Scale,
@@ -128,9 +138,6 @@ local function makeDraggable(button)
 		end
 	end)
 end
-
-makeDraggable(flyButton)
-makeDraggable(speedButton)
 
 ------------------------------------------------
 -- INPUT
@@ -184,6 +191,3 @@ RunService.RenderStepped:Connect(function()
 	local speed = boosted and BOOST_SPEED or FLY_SPEED
 	bodyVelocity.Velocity = direction * speed
 end)
-
-
-
