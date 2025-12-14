@@ -16,8 +16,9 @@ local root = character:WaitForChild("HumanoidRootPart")
 
 -- VARIABLES
 local flying = false
-local bodyVelocity
-local bodyGyro
+local linearVelocity
+local alignOrientation
+local attachment
 local flyConnection
 
 -- START FLYING
@@ -26,22 +27,29 @@ local function startFlying()
 	flying = true
 
 	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	humanoid.AutoRotate = false
 
-	bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-	bodyVelocity.Parent = root
+	attachment = Instance.new("Attachment")
+	attachment.Parent = root
 
-	bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-	bodyGyro.P = 1e4
-	bodyGyro.Parent = root
+	linearVelocity = Instance.new("LinearVelocity")
+	linearVelocity.Attachment0 = attachment
+	linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	linearVelocity.MaxForce = math.huge
+	linearVelocity.Parent = root
+
+	alignOrientation = Instance.new("AlignOrientation")
+	alignOrientation.Attachment0 = attachment
+	alignOrientation.MaxTorque = math.huge
+	alignOrientation.Responsiveness = 200
+	alignOrientation.Parent = root
 
 	local speed = humanoid.WalkSpeed * SPEED_MULTIPLIER
 
 	flyConnection = RunService.RenderStepped:Connect(function()
-		local lookVector = camera.CFrame.LookVector
-		bodyVelocity.Velocity = lookVector * speed
-		bodyGyro.CFrame = camera.CFrame
+		local look = camera.CFrame.LookVector
+		linearVelocity.VectorVelocity = look * speed
+		alignOrientation.CFrame = camera.CFrame
 	end)
 end
 
@@ -55,15 +63,19 @@ local function stopFlying()
 		flyConnection = nil
 	end
 
-	if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
-	if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+	if linearVelocity then linearVelocity:Destroy() linearVelocity = nil end
+	if alignOrientation then alignOrientation:Destroy() alignOrientation = nil end
+	if attachment then attachment:Destroy() attachment = nil end
 
+	humanoid.AutoRotate = true
 	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 end
 
 -- SHIFT LOCK DETECTION
 RunService.RenderStepped:Connect(function()
-	local shiftLocked = player.DevEnableMouseLock and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+	local shiftLocked =
+		player.DevEnableMouseLock
+		and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
 
 	if shiftLocked and not flying then
 		startFlying()
@@ -72,11 +84,10 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- RESPAWN FIX
+-- RESPAWN SAFETY
 player.CharacterAdded:Connect(function(char)
 	character = char
 	humanoid = char:WaitForChild("Humanoid")
 	root = char:WaitForChild("HumanoidRootPart")
 	stopFlying()
 end)
-
