@@ -1,3 +1,7 @@
+-- SETTINGS
+local DOUBLE_TAP_TIME = 0.3
+local SPEED_MULTIPLIER = 5
+
 -- SERVICES
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -5,151 +9,153 @@ local RunService = game:GetService("RunService")
 
 -- PLAYER
 local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local root = character:WaitForChild("HumanoidRootPart")
-local camera = workspace.CurrentCamera
 
--- SETTINGS
-local DOUBLE_TAP_TIME = 0.3
-local WALK_SPEED = 16
-local FLY_SPEED = 16 * 3
-local BOOST_SPEED = 16 * 6
-
--- STATES
+-- VARIABLES
 local flying = false
-local boosted = false
-local lastSpace = 0
-local lastG = 0
+local lastJump = 0
+local attachment
+local linearVelocity
+local alignOrientation
+local flyConnection
 
--- MOVEMENT STATE
-local moveInput = {
-	W = false,
-	A = false,
-	S = false,
-	D = false
-}
+-- GUI VARIABLES
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "AdminPanel"
+screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- BODY MOVERS
-local bodyVelocity = Instance.new("BodyVelocity")
-bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 100)
+frame.Position = UDim2.new(0.5, -100, 0.5, -50)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
 
-local bodyGyro = Instance.new("BodyGyro")
-bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
-bodyGyro.P = 1e5
+-- Optional: add a label to show instructions
+local label = Instance.new("TextLabel")
+label.Size = UDim2.new(1, 0, 1, 0)
+label.BackgroundTransparency = 1
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.Text = "Double Tap Space to Fly\nDrag to Move GUI"
+label.TextScaled = true
+label.Parent = frame
 
-------------------------------------------------
--- GUI
-------------------------------------------------
-local gui = Instance.new("ScreenGui")
-gui.Name = "FlyGUI"
-gui.Parent = player:WaitForChild("PlayerGui")
-
-local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(0, 140, 0, 40)
-flyButton.Position = UDim2.new(0, 20, 1, -120)
-flyButton.Text = "FLY: OFF"
-flyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-flyButton.TextColor3 = Color3.new(1,1,1)
-flyButton.Parent = gui
-
-local speedButton = Instance.new("TextButton")
-speedButton.Size = UDim2.new(0, 140, 0, 40)
-speedButton.Position = UDim2.new(0, 20, 1, -70)
-speedButton.Text = "BOOST: OFF"
-speedButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-speedButton.TextColor3 = Color3.new(1,1,1)
-speedButton.Parent = gui
-
-------------------------------------------------
 -- FUNCTIONS
-------------------------------------------------
-local function updateGUI()
-	flyButton.Text = flying and "FLY: ON" or "FLY: OFF"
-	speedButton.Text = boosted and "BOOST: ON" or "BOOST: OFF"
+
+-- START FLYING
+local function startFlying()
+	if flying then return end
+	flying = true
+
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+	humanoid.AutoRotate = false
+
+	attachment = Instance.new("Attachment")
+	attachment.Parent = root
+
+	linearVelocity = Instance.new("LinearVelocity")
+	linearVelocity.Attachment0 = attachment
+	linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	linearVelocity.MaxForce = math.huge
+	linearVelocity.Parent = root
+
+	alignOrientation = Instance.new("AlignOrientation")
+	alignOrientation.Attachment0 = attachment
+	alignOrientation.MaxTorque = math.huge
+	alignOrientation.Responsiveness = 200
+	alignOrientation.Parent = root
+
+	local speed = humanoid.WalkSpeed * SPEED_MULTIPLIER
+
+	flyConnection = RunService.RenderStepped:Connect(function()
+		local look = camera.CFrame.LookVector
+		linearVelocity.VectorVelocity = look * speed
+		alignOrientation.CFrame = camera.CFrame
+	end)
 end
 
-local function toggleFly()
-	flying = not flying
-	boosted = false
-
-	if flying then
-		humanoid.PlatformStand = true
-		humanoid.WalkSpeed = 0
-		bodyVelocity.Parent = root
-		bodyGyro.Parent = root
-	else
-		humanoid.PlatformStand = false
-		humanoid.WalkSpeed = WALK_SPEED
-		bodyVelocity.Parent = nil
-		bodyGyro.Parent = nil
-	end
-
-	updateGUI()
-end
-
-local function toggleBoost()
+-- STOP FLYING
+local function stopFlying()
 	if not flying then return end
-	boosted = not boosted
-	updateGUI()
+	flying = false
+
+	if flyConnection then
+		flyConnection:Disconnect()
+		flyConnection = nil
+	end
+
+	if linearVelocity then linearVelocity:Destroy() linearVelocity = nil end
+	if alignOrientation then alignOrientation:Destroy() alignOrientation = nil end
+	if attachment then attachment:Destroy() attachment = nil end
+
+	humanoid.AutoRotate = true
+	humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
 end
 
-------------------------------------------------
--- GUI EVENTS
-------------------------------------------------
-flyButton.MouseButton1Click:Connect(toggleFly)
-speedButton.MouseButton1Click:Connect(toggleBoost)
+-- DOUBLE TAP SPACE DETECTION
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode ~= Enum.KeyCode.Space then return end
 
-------------------------------------------------
--- INPUT
-------------------------------------------------
-UserInputService.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-
-	if input.KeyCode == Enum.KeyCode.Space then
-		if tick() - lastSpace <= DOUBLE_TAP_TIME then
-			toggleFly()
+	local now = tick()
+	if now - lastJump <= DOUBLE_TAP_TIME then
+		if flying then
+			stopFlying()
+		else
+			startFlying()
 		end
-		lastSpace = tick()
 	end
+	lastJump = now
+end)
 
-	if input.KeyCode == Enum.KeyCode.G then
-		if tick() - lastG <= DOUBLE_TAP_TIME then
-			toggleBoost()
-		end
-		lastG = tick()
-	end
+-- RESPAWN FIX
+player.CharacterAdded:Connect(function(char)
+	character = char
+	humanoid = char:WaitForChild("Humanoid")
+	root = char:WaitForChild("HumanoidRootPart")
+	stopFlying()
+end)
 
-	if moveInput[input.KeyCode.Name] ~= nil then
-		moveInput[input.KeyCode.Name] = true
+-- DRAGGABLE GUI (HOLD TO DRAG)
+local dragging = false
+local dragStart
+local startPos
+
+local function update(input)
+	local delta = input.Position - dragStart
+	frame.Position = UDim2.new(
+		startPos.X.Scale,
+		startPos.X.Offset + delta.X,
+		startPos.Y.Scale,
+		startPos.Y.Offset + delta.Y
+	)
+end
+
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+	or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = frame.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
 	end
 end)
 
-UserInputService.InputEnded:Connect(function(input)
-	if moveInput[input.KeyCode.Name] ~= nil then
-		moveInput[input.KeyCode.Name] = false
+frame.InputChanged:Connect(function(input)
+	if dragging and (
+		input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch
+	) then
+		update(input)
 	end
 end)
 
-------------------------------------------------
--- FLY LOOP
-------------------------------------------------
-RunService.RenderStepped:Connect(function()
-	if not flying then return end
-
-	bodyGyro.CFrame = camera.CFrame
-
-	local direction = Vector3.zero
-
-	if moveInput.W then direction += camera.CFrame.LookVector end
-	if moveInput.S then direction -= camera.CFrame.LookVector end
-	if moveInput.A then direction -= camera.CFrame.RightVector end
-	if moveInput.D then direction += camera.CFrame.RightVector end
-
-	if direction.Magnitude > 0 then
-		direction = direction.Unit
-	end
-
-	local speed = boosted and BOOST_SPEED or FLY_SPEED
-	bodyVelocity.Velocity = direction * speed
-end)
