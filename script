@@ -12,7 +12,7 @@ local camera = workspace.CurrentCamera
 
 -- SETTINGS
 local DOUBLE_TAP_TIME = 0.3
-local WALK_SPEED = 16 * 3
+local WALK_SPEED = 16
 local FLY_SPEED = 16 * 3
 local BOOST_SPEED = 16 * 6
 
@@ -21,6 +21,14 @@ local flying = false
 local boosted = false
 local lastSpace = 0
 local lastG = 0
+
+-- MOVEMENT STATE
+local moveInput = {
+	W = false,
+	A = false,
+	S = false,
+	D = false
+}
 
 -- BODY MOVERS
 local bodyVelocity = Instance.new("BodyVelocity")
@@ -37,7 +45,6 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "FlyGUI"
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Fly Button
 local flyButton = Instance.new("TextButton")
 flyButton.Size = UDim2.new(0, 140, 0, 40)
 flyButton.Position = UDim2.new(0, 20, 1, -120)
@@ -46,7 +53,6 @@ flyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 flyButton.TextColor3 = Color3.new(1,1,1)
 flyButton.Parent = gui
 
--- Speed Button
 local speedButton = Instance.new("TextButton")
 speedButton.Size = UDim2.new(0, 140, 0, 40)
 speedButton.Position = UDim2.new(0, 20, 1, -70)
@@ -69,10 +75,12 @@ local function toggleFly()
 
 	if flying then
 		humanoid.PlatformStand = true
+		humanoid.WalkSpeed = 0
 		bodyVelocity.Parent = root
 		bodyGyro.Parent = root
 	else
 		humanoid.PlatformStand = false
+		humanoid.WalkSpeed = WALK_SPEED
 		bodyVelocity.Parent = nil
 		bodyGyro.Parent = nil
 	end
@@ -87,18 +95,17 @@ local function toggleBoost()
 end
 
 ------------------------------------------------
--- GUI BUTTON EVENTS
+-- GUI EVENTS
 ------------------------------------------------
 flyButton.MouseButton1Click:Connect(toggleFly)
 speedButton.MouseButton1Click:Connect(toggleBoost)
 
 ------------------------------------------------
--- KEYBOARD INPUT
+-- INPUT
 ------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if gpe then return end
 
-	-- DOUBLE SPACE = FLY
 	if input.KeyCode == Enum.KeyCode.Space then
 		if tick() - lastSpace <= DOUBLE_TAP_TIME then
 			toggleFly()
@@ -106,12 +113,21 @@ UserInputService.InputBegan:Connect(function(input, gpe)
 		lastSpace = tick()
 	end
 
-	-- DOUBLE G = BOOST
 	if input.KeyCode == Enum.KeyCode.G then
 		if tick() - lastG <= DOUBLE_TAP_TIME then
 			toggleBoost()
 		end
 		lastG = tick()
+	end
+
+	if moveInput[input.KeyCode.Name] ~= nil then
+		moveInput[input.KeyCode.Name] = true
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if moveInput[input.KeyCode.Name] ~= nil then
+		moveInput[input.KeyCode.Name] = false
 	end
 end)
 
@@ -119,17 +135,21 @@ end)
 -- FLY LOOP
 ------------------------------------------------
 RunService.RenderStepped:Connect(function()
-	if not flying then
-		humanoid.WalkSpeed = WALK_SPEED
-		return
-	end
+	if not flying then return end
 
-	humanoid.WalkSpeed = 0
-
-	-- FACE CAMERA
 	bodyGyro.CFrame = camera.CFrame
 
-	-- MOVE WHERE YOU LOOK
+	local direction = Vector3.zero
+
+	if moveInput.W then direction += camera.CFrame.LookVector end
+	if moveInput.S then direction -= camera.CFrame.LookVector end
+	if moveInput.A then direction -= camera.CFrame.RightVector end
+	if moveInput.D then direction += camera.CFrame.RightVector end
+
+	if direction.Magnitude > 0 then
+		direction = direction.Unit
+	end
+
 	local speed = boosted and BOOST_SPEED or FLY_SPEED
-	bodyVelocity.Velocity = camera.CFrame.LookVector * speed
+	bodyVelocity.Velocity = direction * speed
 end)
